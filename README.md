@@ -7,6 +7,9 @@ Paper: https://dl.acm.org/doi/10.1145/3604237.3626903
 Python 3.9
 torch
 torch_geometric
+torch_geometric_temporal
+scipy
+matplotlib
 ```
 ## Overview
 The ```model.py``` and ```train_test.py``` files provide the raw code needed to create and then train/test the GDN model.
