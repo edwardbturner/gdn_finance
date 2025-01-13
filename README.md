@@ -1,6 +1,6 @@
 # Repository for the paper "Graph Denoising Networks: A Deep Learning Framework for Equity Portfolio Construction"
 
-
+Paper: https://dl.acm.org/doi/10.1145/3604237.3626903
 
 ## Requirements
 ```
