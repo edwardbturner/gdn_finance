@@ -1,3 +1,5 @@
+from typing import Optional
+
 import torch  # type: ignore
 import torch.nn as nn  # type: ignore
 from torch_geometric.nn import GCNConv  # type: ignore
@@ -46,7 +48,8 @@ class GDN(nn.Module):
         return h
 
 
-# The PIUNet code is adapted from Pulfer's DDPM code: https://github.com/BrianPulfer/PapersReimplementations/tree/main/ddpm
+# The PIUNet code is adapted from Pulfer's DDPM code:
+# https://github.com/BrianPulfer/PapersReimplementations/tree/main/ddpm
 class PIUNet(nn.Module):
     def __init__(
         self,
@@ -219,7 +222,7 @@ class DDPM(nn.Module):
         self,
         x0: torch.Tensor,
         t: torch.Tensor,
-        epsilon: torch.Tensor = None,
+        epsilon: Optional[torch.Tensor],
     ) -> torch.Tensor:
 
         n, c, h, w = x0.shape  # n = batch size, c = num channels, h = height, w = width
@@ -257,6 +260,7 @@ class DDRM(nn.Module):
     ) -> torch.Tensor:
 
         ddpm = self.ddpm
+
         h = self.h
         w = self.w
 
@@ -266,7 +270,6 @@ class DDRM(nn.Module):
             sigma_t = beta_t.sqrt()
 
             # To satisfy Theorem 1
-            eta = 1
             eta_b = (2*sigma_t**2)/(sigma_t**2 + sigma_y**2)
 
             z_t = torch.randn(h, w)
