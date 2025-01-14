@@ -35,7 +35,7 @@ class GDN(nn.Module):
         x: torch.Tensor,  # [200, 16]
         edge_index: torch.Tensor,
         edge_type: torch.Tensor,
-        edge_attr: torch.Tensor = None,
+        edge_attr: Optional[torch.Tensor],
         return_sample: bool = False,
     ) -> torch.Tensor:
 
@@ -66,36 +66,20 @@ class PIUNet(nn.Module):
 
         # Downsampling regime
         self.te1 = self._make_te(time_emb_dim, 1)
-        self.b1 = nn.Sequential(
-            PICNN((1, h, 16), 1, 10),
-            PICNN((10, h, 16), 10, 10),
-            PICNN((10, h, 16), 10, 10)
-        )
+        self.b1 = nn.Sequential(PICNN([1, h, 16], 1, 10), PICNN([10, h, 16], 10, 10), PICNN([10, h, 16], 10, 10))
         self.down1 = nn.Conv2d(10, 10, (1, 4), (1, 2), (0, 1))
 
         self.te2 = self._make_te(time_emb_dim, 10)
-        self.b2 = nn.Sequential(
-            PICNN((10, h, 8), 10, 20),
-            PICNN((20, h, 8), 20, 20),
-            PICNN((20, h, 8), 20, 20)
-        )
+        self.b2 = nn.Sequential(PICNN([10, h, 8], 10, 20), PICNN([20, h, 8], 20, 20), PICNN([20, h, 8], 20, 20))
         self.down2 = nn.Conv2d(20, 20, (1, 4), (1, 2), (0, 1))
 
         self.te3 = self._make_te(time_emb_dim, 20)
-        self.b3 = nn.Sequential(
-            PICNN((20, h, 4), 20, 40),
-            PICNN((40, h, 4), 40, 40),
-            PICNN((40, h, 4), 40, 40)
-        )
+        self.b3 = nn.Sequential(PICNN([20, h, 4], 20, 40), PICNN([40, h, 4], 40, 40), PICNN([40, h, 4], 40, 40))
         self.down3 = nn.Sequential(nn.Conv2d(40, 40, (1, 2), 1), nn.SiLU(), nn.Conv2d(40, 40, (1, 3), 1, (0, 1)))
 
         # Bottleneck point
         self.te_mid = self._make_te(time_emb_dim, 40)
-        self.b_mid = nn.Sequential(
-            PICNN((40, h, 3), 40, 20),
-            PICNN((20, h, 3), 20, 20),
-            PICNN((20, h, 3), 20, 40)
-        )
+        self.b_mid = nn.Sequential(PICNN([40, h, 3], 40, 20), PICNN([20, h, 3], 20, 20), PICNN([20, h, 3], 20, 40))
 
         # Up sampling regime
         self.up1 = nn.Sequential(
@@ -103,26 +87,16 @@ class PIUNet(nn.Module):
         )
 
         self.te4 = self._make_te(time_emb_dim, 80)
-        self.b4 = nn.Sequential(
-            PICNN((80, h, 4), 80, 40),
-            PICNN((40, h, 4), 40, 20),
-            PICNN((20, h, 4), 20, 20)
-        )
+        self.b4 = nn.Sequential(PICNN([80, h, 4], 80, 40), PICNN([40, h, 4], 40, 20), PICNN([20, h, 4], 20, 20))
 
         self.up2 = nn.ConvTranspose2d(20, 20, (1, 4), (1, 2), (0, 1))
         self.te5 = self._make_te(time_emb_dim, 40)
-        self.b5 = nn.Sequential(
-            PICNN((40, h, 8), 40, 20),
-            PICNN((20, h, 8), 20, 10),
-            PICNN((10, h, 8), 10, 10)
-        )
+        self.b5 = nn.Sequential(PICNN([40, h, 8], 40, 20), PICNN([20, h, 8], 20, 10), PICNN([10, h, 8], 10, 10))
 
         self.up3 = nn.ConvTranspose2d(10, 10, (1, 4), (1, 2), (0, 1))
         self.te_out = self._make_te(time_emb_dim, 20)
         self.b_out = nn.Sequential(
-            PICNN((20, h, 16), 20, 10),
-            PICNN((10, h, 16), 10, 10),
-            PICNN((10, h, 16), 10, 10, normalize=False)
+            PICNN([20, h, 16], 20, 10), PICNN([10, h, 16], 10, 10), PICNN([10, h, 16], 10, 10, normalize=False)
         )
 
         self.conv_out = nn.Conv2d(10, 1, (1, 3), 1, (0, 1))
@@ -160,7 +134,7 @@ class PICNN(nn.Module):
 
     def __init__(
         self,
-        shape: tuple,
+        shape: list[int],
         in_c: int,
         out_c: int,
         kernel_size: tuple = (1, 3),
