@@ -4,6 +4,11 @@ import torch  # type: ignore
 import torch.nn as nn  # type: ignore
 from torch_geometric.nn import GCNConv  # type: ignore
 
+# Constants
+KERNEL_SIZE = (1, 3)
+STRIDE = 1
+PADDING = (0, 1)
+
 
 class GDN(nn.Module):
     def __init__(
@@ -14,36 +19,33 @@ class GDN(nn.Module):
         num_nodes: int,
         feature_size: int,
     ):
+        """Initialize the GDN model."""
         super(GDN, self).__init__()
         self.num_steps = num_steps
         self.betas = torch.linspace(min_beta, max_beta, num_steps)
         self.alphas = 1 - self.betas
         self.alpha_bars = torch.tensor([torch.prod(self.alphas[:i + 1]) for i in range(len(self.alphas))])
 
-        self._GCN = GCNConv(feature_size, feature_size)  # by default this adds self loops and normalises
-
-        self._PIUNet = PIUNet(num_nodes, num_steps)
-
-        self._DDPM = DDPM(self._PIUNet, num_steps, self.betas, self.alphas, self.alpha_bars)
-
-        self._DDRM = DDRM(self._DDPM, num_nodes, feature_size)
-
+        self._gcn = GCNConv(feature_size, feature_size)
+        self._piu_net = PIUNet(num_nodes, num_steps)
+        self._ddpm = DDPM(self._piu_net, num_steps, self.betas, self.alphas, self.alpha_bars)
+        self._ddrm = DDRM(self._ddpm, num_nodes, feature_size)
         self._linear = nn.Linear(feature_size, 1)
 
     def forward(
         self,
-        x: torch.Tensor,  # [200, 16]
+        x: torch.Tensor,
         edge_index: torch.Tensor,
         edge_type: torch.Tensor,
         edge_attr: Optional[torch.Tensor],
         return_sample: bool = False,
     ) -> torch.Tensor:
-
-        h = self._GCN(x,  edge_index)  # [200, 16]
+        """Forward pass for the GDN model."""
+        h = self._gcn(x, edge_index)
 
         if not return_sample:
-            h = self._linear(h)  # [200, 1]
-            h = torch.squeeze(h)  # [200]
+            h = self._linear(h)
+            h = torch.squeeze(h)
 
         return h
 
@@ -51,20 +53,16 @@ class GDN(nn.Module):
 # The PIUNet code is adapted from Pulfer's DDPM code:
 # https://github.com/BrianPulfer/PapersReimplementations/tree/main/ddpm
 class PIUNet(nn.Module):
-    def __init__(
-        self,
-        h: int,  # Height of input matrix, for us h=200
-        num_steps: int,
-        time_emb_dim: int = 100
-    ):
+
+    def __init__(self, h: int, num_steps: int, time_emb_dim: int = 100):  # height of input matrix, for us h=200
         super(PIUNet, self).__init__()
 
-        # Sinusoidal embedding
+        # sinusoidal embedding
         self.time_embed = nn.Embedding(num_steps, time_emb_dim)
         self.time_embed.weight.data = sinusoidal_embedding(num_steps, time_emb_dim)
         self.time_embed.requires_grad_(False)
 
-        # Downsampling regime
+        # downsampling regime
         self.te1 = self._make_te(time_emb_dim, 1)
         self.b1 = nn.Sequential(PICNN([1, h, 16], 1, 10), PICNN([10, h, 16], 10, 10), PICNN([10, h, 16], 10, 10))
         self.down1 = nn.Conv2d(10, 10, (1, 4), (1, 2), (0, 1))
@@ -77,11 +75,11 @@ class PIUNet(nn.Module):
         self.b3 = nn.Sequential(PICNN([20, h, 4], 20, 40), PICNN([40, h, 4], 40, 40), PICNN([40, h, 4], 40, 40))
         self.down3 = nn.Sequential(nn.Conv2d(40, 40, (1, 2), 1), nn.SiLU(), nn.Conv2d(40, 40, (1, 3), 1, (0, 1)))
 
-        # Bottleneck point
+        # bottleneck point
         self.te_mid = self._make_te(time_emb_dim, 40)
         self.b_mid = nn.Sequential(PICNN([40, h, 3], 40, 20), PICNN([20, h, 3], 20, 20), PICNN([20, h, 3], 20, 40))
 
-        # Up sampling regime
+        # up sampling regime
         self.up1 = nn.Sequential(
             nn.ConvTranspose2d(40, 40, (1, 3), 1, (0, 1)), nn.SiLU(), nn.ConvTranspose2d(40, 40, (1, 2), 1)
         )
@@ -137,11 +135,12 @@ class PICNN(nn.Module):
         shape: list[int],
         in_c: int,
         out_c: int,
-        kernel_size: tuple = (1, 3),
-        stride: int = 1,
-        padding: tuple = (0, 1),
+        kernel_size: tuple[int, int] = KERNEL_SIZE,
+        stride: int = STRIDE,
+        padding: tuple[int, int] = PADDING,
         normalize: bool = True,
     ):
+        """Initialize the PICNN model."""
         super(PICNN, self).__init__()
         self.ln = nn.LayerNorm(shape)
         self.conv1 = nn.Conv2d(in_c, out_c, kernel_size, stride, padding)
@@ -149,17 +148,13 @@ class PICNN(nn.Module):
         self.activation = nn.SiLU()
         self.normalize = normalize
 
-    def forward(
-        self,
-        x: torch.Tensor,
-    ) -> torch.Tensor:
-
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """Forward pass for the PICNN model."""
         out = self.ln(x) if self.normalize else x
         out = self.conv1(out)
         out = self.activation(out)
         out = self.conv2(out)
         out = self.activation(out)
-
         return out
 
 
@@ -187,7 +182,7 @@ class DDPM(nn.Module):
     ):
         super(DDPM, self).__init__()
         self.num_steps = num_steps
-        self.network = network  # Will pass in PIU-Net as network
+        self.network = network  # will pass in PIU-Net as network
         self.betas = betas
         self.alphas = alphas
         self.alpha_bars = alpha_bars
@@ -205,7 +200,7 @@ class DDPM(nn.Module):
         if epsilon is None:
             epsilon = torch.randn(n, c, h, w)
 
-        noisy = a_bar.sqrt().reshape(n, 1, 1, 1)*x0 + (1 - a_bar).sqrt().reshape(n, 1, 1, 1)*epsilon
+        noisy = a_bar.sqrt().reshape(n, 1, 1, 1) * x0 + (1 - a_bar).sqrt().reshape(n, 1, 1, 1) * epsilon
         return noisy
 
     def backward(self, x, t):
@@ -239,12 +234,12 @@ class DDRM(nn.Module):
         w = self.w
 
         for idx, t in enumerate(list(range(ddpm.num_steps))[::-1]):
-            # Using \sigma_t^2 = \beta_t, Ho et al. found the model to be robust to the \sigma_t choice
+            # using \sigma_t^2 = \beta_t, Ho et al. found the model to be robust to the \sigma_t choice
             beta_t = ddpm.betas[t]
             sigma_t = beta_t.sqrt()
 
-            # To satisfy Theorem 1
-            eta_b = (2*sigma_t**2)/(sigma_t**2 + sigma_y**2)
+            # satisfy Theorem 1
+            eta_b = (2 * sigma_t**2) / (sigma_t**2 + sigma_y**2)
 
             z_t = torch.randn(h, w)
 
@@ -253,17 +248,17 @@ class DDRM(nn.Module):
                 x_t = y + (sigma_t**2 - sigma_y**2).sqrt() * z_t
 
             else:
-                time_tensor = (torch.ones(1, 1) * (t+1)).long()
+                time_tensor = (torch.ones(1, 1) * (t + 1)).long()
                 tilde_epsilon_t = ddpm.backward(x_t[None, None, :], time_tensor)[0][0]  # here x_t corresponds to t+1
 
                 alpha_t = ddpm.alphas[t]
                 alpha_t_bar = ddpm.alpha_bars[t]
 
-                tilde_x_t = (1/alpha_t.sqrt()) * (x_t - (beta_t/((1 - alpha_t_bar).sqrt())) * tilde_epsilon_t)
+                tilde_x_t = (1 / alpha_t.sqrt()) * (x_t - (beta_t / ((1 - alpha_t_bar).sqrt())) * tilde_epsilon_t)
 
                 if sigma_t < sigma_y:
                     x_t = tilde_x_t + sigma_t * z_t
                 else:
-                    x_t = (1-eta_b)*tilde_x_t + eta_b*y + (sigma_t**2 - (sigma_y**2)*(eta_b**2)).sqrt() * z_t
+                    x_t = (1 - eta_b) * tilde_x_t + eta_b * y + (sigma_t**2 - (sigma_y**2) * (eta_b**2)).sqrt() * z_t
 
         return x_t
