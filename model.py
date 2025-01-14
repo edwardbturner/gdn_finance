@@ -158,9 +158,14 @@ class PICNN(nn.Module):
         return out
 
 
-# The "sinusoidal_embedding" called on is the below function, this
-# returns the standard positional embedding
-def sinusoidal_embedding(n, d):
+def sinusoidal_embedding(n: int, d: int) -> torch.Tensor:
+    """
+    Generate sinusoidal embeddings (standard positional embedding) for a given sequence length and embedding dimension.
+
+    :param n: int - The sequence length.
+    :param d: int - The embedding dimension.
+    :return: torch.Tensor - The sinusoidal embeddings.
+    """
     embedding = torch.zeros(n, d)
     wk = torch.tensor([1 / 10_000 ** (2 * j / d) for j in range(d)])
     wk = wk.reshape((1, d))
